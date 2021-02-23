@@ -1,0 +1,13 @@
+version: "3"
+services:
+  redis-service:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+
+  fpl-md:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    links:
+      - redis-service
