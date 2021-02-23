@@ -114,7 +114,7 @@ async def fplmd(api):
             player_details = await load_player(player_id)
             news = player_details['news']
 
-            if not news_is_new(player_id=player_id, news=news):
+            if news_is_new(player_id=player_id, news=news):
                 chance_of_playing = player_details['chance_of_playing_this_round']
                 player_name = f"{player_details['first_name']} {player_details['second_name']}"
                 print(f"News: {news}")
