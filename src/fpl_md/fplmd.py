@@ -4,7 +4,6 @@ import time
 import logging
 import os
 
-from datetime import datetime
 from typing import Optional
 from .api import create_api
 
@@ -69,8 +68,8 @@ async def load_gw(gw_id, with_live: bool = True):
     gw = await client.get_gameweek(gameweek_id=gw_id, include_live=with_live)
     return gw
 
-def get_news(player_id: int, player):
-    cid = f"player_news:{player_id}"
+def get_news(player_id: int, player, team_id: int):
+    cid = f"player_news:{player_id}:{team_id}"
 
     old_news = redis_conn.get(cid)
     new_news = player['news']
@@ -80,14 +79,14 @@ def get_news(player_id: int, player):
         return {"text": "", "new": False}
 
     if json.loads(old_news) == new_news:
-        return {"text": old_news, "new": False}
+        return {"text": json.loads(old_news), "new": False}
     
     redis_conn.set(cid, json.dumps(new_news))
 
     return {"text": new_news, "new": True}
     
 
-async def load_player(player_id: int):
+async def load_player(player_id: int, team_id: int):
     client = await get_fpl_client()
     player = await client.get_player(
         player_id=player_id,
@@ -95,25 +94,30 @@ async def load_player(player_id: int):
         return_json=True
     )
 
-    news = get_news(player_id, player)
-    print(str(news))
+    news = get_news(player_id, player, team_id)
 
+    print(str(news))
+    
     return {"player": player, "news_text": news['text'], "new": news['new'] }
 
-def tweet(api, team_name: str, player_name: str, news: str, chance_of_playing: int):
+def tweet(api, team_name: str, player_name: str, news: str, chance_of_playing: int, news_added: str):
     text = f"Hi {team_name}, {player_name}'s status has been updated: {news}."
 
     if chance_of_playing != None:
         text = text + f" Their chance of playing this round is estimated at {str(chance_of_playing)}%."
 
-    text = text + f" Timestamp: {datetime.utcnow()}"
+    text = text + f" Updated at: {news_added}"
 
     print(text)
     logger.info(text)
-    api.update_status(text)
+    try:
+        api.update_status(text)
+    except Exception as e:
+        print("An exception occurred: " + str(e))
+        logger.error("An exception occurred: " + str(e))
 
 async def fplmd(api):
-    sleep = 30
+    sleep = 60
     team_ids = [1415006, 7410, 5615599, 2005835, 23366, 620397]
 
     for team_id in team_ids:
@@ -123,7 +127,7 @@ async def fplmd(api):
 
         for player in picks:
             player_id = player['element']
-            player_details = await load_player(player_id)
+            player_details = await load_player(player_id, team_id)
             player = player_details["player"]
             news_is_new = player_details['new']
             news = player_details['news_text']
@@ -132,6 +136,7 @@ async def fplmd(api):
             if news_is_new:
                 chance_of_playing = player['chance_of_playing_this_round']
                 player_name = f"{player['first_name']} {player['second_name']}"
+                news_added = player["news_added"]
                 print(f"News: {news}")
                 print(f"Player: {player_name}")
                 print(f"Chance of playing this round: {str(chance_of_playing)}")
@@ -145,7 +150,8 @@ async def fplmd(api):
                     team_name=team.player_first_name, 
                     player_name=player_name, 
                     news=news, 
-                    chance_of_playing=chance_of_playing
+                    chance_of_playing=chance_of_playing,
+                    news_added=news_added
                 )
                 print(f"Sleeping for {sleep} seconds...")
                 time.sleep(sleep)
