@@ -78,10 +78,13 @@ def get_news(player_id: int, player, team_id: int):
         redis_conn.set(cid, json.dumps(""))
         return {"text": "", "new": False}
 
-    if json.loads(old_news) == new_news:
-        return {"text": json.loads(old_news), "new": False}
+    old_news = json.loads(old_news)
+    if old_news == new_news:
+        return {"text": old_news, "new": False}
     
     redis_conn.set(cid, json.dumps(new_news))
+
+    logger.info(f"Old news: {old_news} is obsolete")
 
     return {"text": new_news, "new": True}
     
