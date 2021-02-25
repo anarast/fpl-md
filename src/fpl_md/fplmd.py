@@ -120,7 +120,8 @@ def tweet(api, team_name: str, player_name: str, news: str, chance_of_playing: i
         logger.error("An exception occurred: " + str(e))
 
 async def fplmd(api):
-    sleep = 60
+    outer_sleep = 60
+    inner_sleep = 10
     team_ids = [1415006, 7410, 5615599, 2005835, 23366, 620397]
 
     for team_id in team_ids:
@@ -135,6 +136,8 @@ async def fplmd(api):
             news_is_new = player_details['new']
             news = player_details['news_text']
             print("news is new: " + str(news_is_new))
+            print(f"Sleeping for {inner_sleep} seconds...")
+            time.sleep(inner_sleep)
 
             if news_is_new:
                 chance_of_playing = player['chance_of_playing_this_round']
@@ -156,11 +159,9 @@ async def fplmd(api):
                     chance_of_playing=chance_of_playing,
                     news_added=news_added
                 )
-                print(f"Sleeping for {sleep} seconds...")
-                time.sleep(sleep)
             
-        print(f"Sleeping for {sleep} seconds...")
-        time.sleep(sleep)
+        print(f"Sleeping for {outer_sleep} seconds...")
+        time.sleep(outer_sleep)
 
 
 async def main():
