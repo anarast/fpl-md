@@ -94,7 +94,13 @@ def get_news(player_id: int, player, team_id: int):
     # If the news was added more than a day ago, add it to the cache
     # but don't tweet about it.
     news_added = player['news_added']
-    news_added_date_time = datetime.strptime(news_added, '%Y-%m-%dT%H:%M:%SZ')
+
+    if (news_added is None):
+        logger.info("news_added is null")
+        print("news_added is null")
+        return {"text": new_news, "new": False}
+
+    news_added_date_time = datetime.strptime(news_added, '%Y-%m-%dT%H:%M:%OS%z')
     now_minus_one_day = datetime.utcnow() - timedelta(day=1)
 
     if (news_added_date_time < now_minus_one_day):
@@ -194,26 +200,9 @@ async def fplmd(api, dry_run: bool):
         print(f"Sleeping for {outer_sleep} seconds...")
         time.sleep(outer_sleep)
 
-def get_cli_args() -> Dict:
-    global cli_args
-    if cli_args is not None:
-        return cli_args
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        'DRY_RUN',
-        help='If True, will not send tweets. If False, will send tweets.',
-        type=bool
-    )
-
-    cli_args = parser.parse_args().__dict__
-    return cli_args
-
 async def main():
     api = create_api()
-    args = get_cli_args()
-    dry_run = args['DRY_RUN']
+    dry_run = os.getenv("DRY_RUN")
     print("Dry run: " + str(dry_run))
     while(True):
         try:
