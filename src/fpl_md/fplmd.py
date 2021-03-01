@@ -100,8 +100,9 @@ def get_news(player_id: int, player, team_id: int):
         print("news_added is null")
         return {"text": new_news, "new": False}
 
-    news_added_date_time = datetime.strptime(news_added, '%Y-%m-%dT%H:%M:%OS%z')
-    now_minus_one_day = datetime.utcnow() - timedelta(day=1)
+    news_added_date_time = datetime.strptime(news_added, '%Y-%m-%dT%H:%M:%S.%fZ')
+    print("news_added: " + str(news_added_date_time))
+    now_minus_one_day = datetime.utcnow() - timedelta(days=1)
 
     if (news_added_date_time < now_minus_one_day):
         logger.info("News was added more than one day ago.")
