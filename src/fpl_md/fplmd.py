@@ -3,8 +3,10 @@ import json
 import time
 import logging
 import os
+import argparse
 
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import Optional, Dict
 from .api import create_api
 
 import aiohttp
@@ -18,6 +20,7 @@ redis_conn = redis.Redis(host=os.getenv("REDIS_HOST"), port=6379)
 http_sess: Optional[aiohttp.ClientSession] = None
 fpl_client: Optional[FPL] = None
 logger = logging.getLogger()
+cli_args: Optional[Dict] = None
 
 def get_http_sess() -> aiohttp.ClientSession:
     global http_sess
@@ -34,9 +37,9 @@ async def get_fpl_client() -> FPL:
     return FPL(get_http_sess())
 
 
-async def get_picks(user: User, gw: Optional[int] = None):
-    if gw is None:
-        gw = user.current_event
+async def get_picks(user: User):
+    gw = user.current_event
+    print("current gw: " + str(gw))
 
     cid = f"picks:{user.id}:{gw}"
     raw_picks = redis_conn.get(cid)
@@ -69,22 +72,34 @@ async def load_gw(gw_id, with_live: bool = True):
     return gw
 
 def get_news(player_id: int, player, team_id: int):
+    # Cache the news against the player ID and the team ID so that
+    # we create a tweet for each FPL team
     cid = f"player_news:{player_id}:{team_id}"
 
     old_news = redis_conn.get(cid)
     new_news = player['news']
 
-    if (old_news is None):
-        redis_conn.set(cid, json.dumps(""))
-        return {"text": "", "new": False}
-
-    old_news = json.loads(old_news)
+    if (old_news != None):
+        old_news = json.loads(old_news)
+    
     if old_news == new_news:
+        print("old_news: " + old_news)
+        print("new news: " + new_news)
         return {"text": old_news, "new": False}
     
     redis_conn.set(cid, json.dumps(new_news))
 
     logger.info(f"Old news: {old_news} is obsolete")
+
+    # If the news was added more than a day ago, add it to the cache
+    # but don't tweet about it.
+    news_added = player['news_added']
+    news_added_date_time = datetime.strptime(news_added, '%Y-%m-%dT%H:%M:%SZ')
+    now_minus_one_day = datetime.utcnow() - timedelta(day=1)
+
+    if (news_added_date_time < now_minus_one_day):
+        logger.info("News was added more than one day ago.")
+        return {"text": new_news, "new": False}
 
     return {"text": new_news, "new": True}
     
@@ -103,7 +118,15 @@ async def load_player(player_id: int, team_id: int):
     
     return {"player": player, "news_text": news['text'], "new": news['new'] }
 
-def tweet(api, team_name: str, player_name: str, news: str, chance_of_playing: int, news_added: str):
+def tweet(
+    api, 
+    team_name: str, 
+    player_name: str, 
+    news: str, 
+    chance_of_playing: int, 
+    news_added: str,
+    dry_run: Optional[bool] = True
+):
     text = f"Hi {team_name}, {player_name}'s status has been updated: {news}."
 
     if chance_of_playing != None:
@@ -113,16 +136,21 @@ def tweet(api, team_name: str, player_name: str, news: str, chance_of_playing: i
 
     print(text)
     logger.info(text)
-    try:
-        api.update_status(text)
-    except Exception as e:
-        print("An exception occurred: " + str(e))
-        logger.error("An exception occurred: " + str(e))
 
-async def fplmd(api):
+    if not dry_run:
+        try:
+            api.update_status(text)
+        except Exception as e:
+            print("An exception occurred: " + str(e))
+            logger.error("An exception occurred: " + str(e))
+    else:
+        print("Dry run is set to true, not sending tweet.")
+        logger.info("Dry run is set to true, not sending tweet.")
+
+async def fplmd(api, dry_run: bool):
     outer_sleep = 60
-    inner_sleep = 10
-    team_ids = [1415006, 7410, 5615599, 2005835, 23366, 620397]
+    inner_sleep = 20
+    team_ids = [1415006, 7410, 23366]
 
     for team_id in team_ids:
         team = await load_team(team_id)
@@ -134,7 +162,9 @@ async def fplmd(api):
             player_details = await load_player(player_id, team_id)
             player = player_details["player"]
             news_is_new = player_details['new']
-            news = player_details['news_text']
+            news = player['news']
+            print(player['second_name'])
+            print(news)
             print("news is new: " + str(news_is_new))
             print(f"Sleeping for {inner_sleep} seconds...")
             time.sleep(inner_sleep)
@@ -157,18 +187,37 @@ async def fplmd(api):
                     player_name=player_name, 
                     news=news, 
                     chance_of_playing=chance_of_playing,
-                    news_added=news_added
+                    news_added=news_added,
+                    dry_run=dry_run
                 )
             
         print(f"Sleeping for {outer_sleep} seconds...")
         time.sleep(outer_sleep)
 
+def get_cli_args() -> Dict:
+    global cli_args
+    if cli_args is not None:
+        return cli_args
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        'DRY_RUN',
+        help='If True, will not send tweets. If False, will send tweets.',
+        type=bool
+    )
+
+    cli_args = parser.parse_args().__dict__
+    return cli_args
 
 async def main():
     api = create_api()
+    args = get_cli_args()
+    dry_run = args['DRY_RUN']
+    print("Dry run: " + str(dry_run))
     while(True):
         try:
-            await fplmd(api)
+            await fplmd(api, dry_run)
         except Exception as e:
             print("An exception occurred: " + str(e))
             logger.error("An exception occurred: " + str(e))
