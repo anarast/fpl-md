@@ -155,8 +155,7 @@ def tweet(
         logger.info("Dry run is set to true, not sending tweet.")
 
 async def fplmd(api, dry_run: bool):
-    outer_sleep = 60
-    inner_sleep = 20
+    sleep = 60
     team_ids = [1415006, 7410, 23366]
 
     for team_id in team_ids:
@@ -173,8 +172,8 @@ async def fplmd(api, dry_run: bool):
             print(player['second_name'])
             print(news)
             print("news is new: " + str(news_is_new))
-            print(f"Sleeping for {inner_sleep} seconds...")
-            time.sleep(inner_sleep)
+            print(f"Sleeping for {sleep} seconds...")
+            time.sleep(sleep)
 
             if news_is_new:
                 chance_of_playing = player['chance_of_playing_this_round']
@@ -198,8 +197,8 @@ async def fplmd(api, dry_run: bool):
                     dry_run=dry_run
                 )
             
-        print(f"Sleeping for {outer_sleep} seconds...")
-        time.sleep(outer_sleep)
+        print(f"Sleeping for {sleep} seconds...")
+        time.sleep(sleep)
 
 async def main():
     api = create_api()
