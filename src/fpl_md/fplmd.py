@@ -3,8 +3,8 @@ import json
 import time
 import logging
 import os
-import argparse
 
+from distutils.util import strtobool
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 from .api import create_api
@@ -37,9 +37,10 @@ async def get_fpl_client() -> FPL:
     return FPL(get_http_sess())
 
 
-async def get_picks(user: User):
-    gw = user.current_event
-    print("current gw: " + str(gw))
+async def get_picks(user: User, gw: Optional[int] = None):
+    print("=> Getting picks...")
+    if gw is None:
+        gw = user.current_event
 
     cid = f"picks:{user.id}:{gw}"
     raw_picks = redis_conn.get(cid)
@@ -49,7 +50,7 @@ async def get_picks(user: User):
         redis_conn.set(name=cid, value=raw_picks, ex=300)
 
     picks = json.loads(raw_picks)
-        
+
     return picks[str(gw)]
 
 
@@ -59,7 +60,7 @@ async def load_team(team_id: int):
     if raw_user is None:
         client = await get_fpl_client()
         raw_user = await client.get_user(team_id, return_json=True)
-        redis_conn.set(cid, json.dumps(raw_user))
+        redis_conn.set(name=cid, value=json.dumps(raw_user), ex=300)
     else:
         raw_user = json.loads(raw_user)
 
@@ -132,7 +133,7 @@ def tweet(
     news: str, 
     chance_of_playing: int, 
     news_added: str,
-    dry_run: Optional[bool] = True
+    dry_run: Optional[bool] = False
 ):
     text = f"Hi {team_name}, {player_name}'s status has been updated: {news}."
 
@@ -153,6 +154,7 @@ def tweet(
     else:
         print("Dry run is set to true, not sending tweet.")
         logger.info("Dry run is set to true, not sending tweet.")
+    
 
 async def fplmd(api, dry_run: bool):
     outer_sleep = 600
@@ -161,8 +163,9 @@ async def fplmd(api, dry_run: bool):
 
     for team_id in team_ids:
         team = await load_team(team_id)
+        gw = team.current_event
         print(team)
-        picks = await get_picks(team)
+        picks = await get_picks(team, gw)
 
         for player in picks:
             player_id = player['element']
@@ -203,7 +206,7 @@ async def fplmd(api, dry_run: bool):
 
 async def main():
     api = create_api()
-    dry_run = os.getenv("DRY_RUN")
+    dry_run = strtobool(os.getenv("DRY_RUN"))
     print("Dry run: " + str(dry_run))
     while(True):
         try:
