@@ -22,6 +22,21 @@ fpl_client: Optional[FPL] = None
 logger = logging.getLogger()
 cli_args: Optional[Dict] = None
 
+team_handle_map = [
+    {
+        'id': 1415006,
+        'handle': 'tarnasa',
+    },
+    {
+        'id': 23366,
+        'handle': 'torpy',
+    },
+    {
+        'id': 7410,
+        'handle': 'andante_nz',
+    }
+] 
+
 def get_http_sess() -> aiohttp.ClientSession:
     global http_sess
     if http_sess is None:
@@ -129,13 +144,14 @@ async def load_player(player_id: int, team_id: int):
 def tweet(
     api, 
     team_name: str, 
+    team_handle: str,
     player_name: str, 
     news: str, 
     chance_of_playing: int, 
     news_added: str,
     dry_run: Optional[bool] = False
 ):
-    text = f"Hi {team_name}, {player_name}'s status has been updated: {news}."
+    text = f"@{team_handle} Hi {team_name}, {player_name}'s status has been updated: {news}."
 
     if chance_of_playing != None:
         text = text + f" Their chance of playing this round is estimated at {str(chance_of_playing)}%."
@@ -159,9 +175,9 @@ def tweet(
 async def fplmd(api, dry_run: bool):
     outer_sleep = 600
     inner_sleep = 120
-    team_ids = [1415006, 7410, 23366]
 
-    for team_id in team_ids:
+    for team_handle in team_handle_map:
+        team_id = team_handle['id']
         team = await load_team(team_id)
         gw = team.current_event
         print(team)
@@ -194,6 +210,7 @@ async def fplmd(api, dry_run: bool):
                 tweet(
                     api, 
                     team_name=team.player_first_name, 
+                    team_handle=team_handle['handle'],
                     player_name=player_name, 
                     news=news, 
                     chance_of_playing=chance_of_playing,

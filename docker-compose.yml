@@ -1,7 +1,8 @@
 version: "3"
 services:
-  redis-service:
+  redis:
     image: "redis:alpine"
+    restart: always
     ports:
       - "6379:6379"
 
@@ -9,5 +10,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: always
     links:
-      - redis-service
+      - redis
