@@ -107,21 +107,11 @@ def get_news(player_id: int, player, team_id: int):
 
     logger.info(f"Old news: {old_news} is obsolete")
 
-    # If the news was added more than a day ago, add it to the cache
-    # but don't tweet about it.
     news_added = player['news_added']
 
     if (news_added is None):
         logger.info("news_added is null")
         print("news_added is null")
-        return {"text": new_news, "new": False}
-
-    news_added_date_time = datetime.strptime(news_added, '%Y-%m-%dT%H:%M:%S.%fZ')
-    print("news_added: " + str(news_added_date_time))
-    now_minus_one_day = datetime.utcnow() - timedelta(days=1)
-
-    if (news_added_date_time < now_minus_one_day):
-        logger.info("News was added more than one day ago.")
         return {"text": new_news, "new": False}
 
     return {"text": new_news, "new": True}
