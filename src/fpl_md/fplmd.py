@@ -52,7 +52,6 @@ async def get_fpl_client() -> FPL:
 
 
 async def get_picks(user: User, gw: Optional[int] = None):
-    print("=> Getting picks...")
     if gw is None:
         gw = user.current_event
 
@@ -98,8 +97,6 @@ def get_news(player_id: int, player, team_id: int):
         old_news = json.loads(old_news)
     
     if old_news == new_news:
-        print("old_news: " + old_news)
-        print("new news: " + new_news)
         return {"text": old_news, "new": False}
     
     redis_conn.set(cid, json.dumps(new_news))
@@ -140,7 +137,6 @@ def tweet(
 
     text = text + f" Updated at: {news_added}"
 
-    print(text)
     logger.info(text)
 
     if not dry_run:
@@ -153,8 +149,8 @@ def tweet(
     
 
 async def fplmd(api, dry_run: bool):
-    outer_sleep = 600
-    inner_sleep = 120
+    outer_sleep = 300
+    inner_sleep = 60
 
     for team_handle in team_handle_map:
         team_id = team_handle['id']
