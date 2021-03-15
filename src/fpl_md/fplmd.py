@@ -5,7 +5,6 @@ import logging
 import os
 
 from distutils.util import strtobool
-from datetime import datetime, timedelta
 from typing import Optional, Dict
 from .api import create_api
 
@@ -105,13 +104,12 @@ def get_news(player_id: int, player, team_id: int):
     
     redis_conn.set(cid, json.dumps(new_news))
 
-    logger.info(f"Old news: {old_news} is obsolete")
+    logger.warning(f"Old news: {old_news} is obsolete")
 
     news_added = player['news_added']
 
     if (news_added is None):
-        logger.info("news_added is null")
-        print("news_added is null")
+        logger.warning("news_added is null")
         return {"text": new_news, "new": False}
 
     return {"text": new_news, "new": True}
@@ -127,8 +125,6 @@ async def load_player(player_id: int, team_id: int):
 
     news = get_news(player_id, player, team_id)
 
-    print(str(news))
-    
     return {"player": player, "news_text": news['text'], "new": news['new'] }
 
 def tweet(
@@ -137,14 +133,10 @@ def tweet(
     team_handle: str,
     player_name: str, 
     news: str, 
-    chance_of_playing: int, 
     news_added: str,
     dry_run: Optional[bool] = False
 ):
     text = f"@{team_handle} Hi {team_name}, {player_name}'s status has been updated: {news}."
-
-    if chance_of_playing != None:
-        text = text + f" Their chance of playing this round is estimated at {str(chance_of_playing)}%."
 
     text = text + f" Updated at: {news_added}"
 
@@ -155,11 +147,9 @@ def tweet(
         try:
             api.update_status(text)
         except Exception as e:
-            print("An exception occurred: " + str(e))
             logger.error("An exception occurred: " + str(e))
     else:
-        print("Dry run is set to true, not sending tweet.")
-        logger.info("Dry run is set to true, not sending tweet.")
+        logger.warning("Dry run is set to true, not sending tweet.")
     
 
 async def fplmd(api, dry_run: bool):
@@ -170,7 +160,6 @@ async def fplmd(api, dry_run: bool):
         team_id = team_handle['id']
         team = await load_team(team_id)
         gw = team.current_event
-        print(team)
         picks = await get_picks(team, gw)
 
         for player in picks:
@@ -179,19 +168,11 @@ async def fplmd(api, dry_run: bool):
             player = player_details["player"]
             news_is_new = player_details['new']
             news = player['news']
-            print(player['second_name'])
-            print(news)
-            print("news is new: " + str(news_is_new))
-            print(f"Sleeping for {inner_sleep} seconds...")
             time.sleep(inner_sleep)
 
             if news_is_new:
-                chance_of_playing = player['chance_of_playing_this_round']
                 player_name = f"{player['first_name']} {player['second_name']}"
                 news_added = player["news_added"]
-                print(f"News: {news}")
-                print(f"Player: {player_name}")
-                print(f"Chance of playing this round: {str(chance_of_playing)}")
 
                 if len(news) == 0:
                     news = "No news, player is available"
@@ -203,23 +184,20 @@ async def fplmd(api, dry_run: bool):
                     team_handle=team_handle['handle'],
                     player_name=player_name, 
                     news=news, 
-                    chance_of_playing=chance_of_playing,
                     news_added=news_added,
                     dry_run=dry_run
                 )
             
-        print(f"Sleeping for {outer_sleep} seconds...")
         time.sleep(outer_sleep)
 
 async def main():
     api = create_api()
     dry_run = strtobool(os.getenv("DRY_RUN"))
-    print("Dry run: " + str(dry_run))
+    logger.warning("Dry run: " + str(dry_run))
     while(True):
         try:
             await fplmd(api, dry_run)
         except Exception as e:
-            print("An exception occurred: " + str(e))
             logger.error("An exception occurred: " + str(e))
             session = get_http_sess()
             await session.close()
