@@ -167,7 +167,7 @@ async def fplmd(api, dry_run: bool):
             time.sleep(inner_sleep)
 
             if news_is_new:
-                player_name = f"{player['first_name']} {player['second_name']}"
+                player_name = player['web_name']
                 news_added = player["news_added"]
 
                 if len(news) == 0:
