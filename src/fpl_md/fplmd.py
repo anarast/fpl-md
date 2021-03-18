@@ -135,7 +135,7 @@ def tweet(
 ):
     text = f".@{team_handle} Hi {team_name}, {player_name}'s status has been updated: {news}."
 
-    text = text + f" Updated at: {news_added}"
+    text = text + f" First updated at: {news_added}"
 
     logger.info(text)
 
