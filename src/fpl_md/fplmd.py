@@ -133,7 +133,7 @@ def tweet(
     news_added: str,
     dry_run: Optional[bool] = False
 ):
-    text = f"@{team_handle} Hi {team_name}, {player_name}'s status has been updated: {news}."
+    text = f".@{team_handle} Hi {team_name}, {player_name}'s status has been updated: {news}."
 
     text = text + f" Updated at: {news_added}"
 
