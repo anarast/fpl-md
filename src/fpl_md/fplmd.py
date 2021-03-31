@@ -85,10 +85,13 @@ async def load_gw(gw_id, with_live: bool = True):
     gw = await client.get_gameweek(gameweek_id=gw_id, include_live=with_live)
     return gw
 
-def get_news(player_id: int, player, team_id: int):
-    # Cache the news against the player ID and the team ID so that
-    # we create a tweet for each FPL team
-    cid = f"player_news:{player_id}:{team_id}"
+def get_news(player_id: int, player, team_id: Optional[int] = None):
+    if not team_id == None:
+        # If team_id is passed in, cache the news against the player ID 
+        # and the team ID so that we create a reply tweet for each FPL team
+        cid = f"player_news:{player_id}:{team_id}"
+    else:
+        cid = f"player_news:{player_id}"
 
     old_news = redis_conn.get(cid)
     new_news = player['news']
@@ -110,7 +113,14 @@ def get_news(player_id: int, player, team_id: int):
         return {"text": new_news, "new": False}
 
     return {"text": new_news, "new": True}
-    
+
+async def load_players():
+    client = await get_fpl_client()
+    players = await client.get_players(
+        return_json=True
+    )
+
+    return players
 
 async def load_player(player_id: int, team_id: int):
     client = await get_fpl_client()
@@ -126,18 +136,26 @@ async def load_player(player_id: int, team_id: int):
 
 def tweet(
     api, 
-    team_name: str, 
-    team_handle: str,
-    player_name: str, 
-    news: str, 
-    news_added: str,
-    dry_run: Optional[bool] = False
-):
-    text = f".@{team_handle} Hi {team_name}, {player_name}'s status has been updated: {news}."
+    player,
+    dry_run: Optional[bool] = False,
+    team_handle: Optional[str] = None,
+    team_name: Optional[str] = None
+    ):
+    player_name = player['web_name']
+    news_added = player["news_added"]
+    news = player['news']
 
-    text = text + f" First updated at: {news_added}"
-
-    logger.info(text)
+    if len(news) == 0:
+        news = "No news, player is now available"
+    
+    if team_handle == None:
+        text = ""
+    else:
+        text = f"@{team_handle} Hi {team_name}, "
+    
+    text = text + f"{player_name}'s status has been updated: {news}. First updated at: {news_added}"
+    
+    logger.warning(text)
 
     if not dry_run:
         try:
@@ -152,6 +170,20 @@ async def fplmd(api, dry_run: bool):
     outer_sleep = 300
     inner_sleep = 60
 
+    # All player notifications
+    players = await load_players()
+    for player in players:
+        player_id = player['id']
+        news = get_news(player_id, player)
+        if news['new']:
+            # Tweet the tweet
+            tweet(
+                api, 
+                player,
+                dry_run=dry_run
+            )
+
+    # Custom player notifications (replies)
     for team_handle in team_handle_map:
         team_id = team_handle['id']
         team = await load_team(team_id)
@@ -163,25 +195,16 @@ async def fplmd(api, dry_run: bool):
             player_details = await load_player(player_id, team_id)
             player = player_details["player"]
             news_is_new = player_details['new']
-            news = player['news']
             time.sleep(inner_sleep)
 
             if news_is_new:
-                player_name = player['web_name']
-                news_added = player["news_added"]
-
-                if len(news) == 0:
-                    news = "No news, player is available"
-
                 # Tweet the tweet
                 tweet(
                     api, 
+                    player,
+                    dry_run=dry_run,
                     team_name=team.player_first_name, 
                     team_handle=team_handle['handle'],
-                    player_name=player_name, 
-                    news=news, 
-                    news_added=news_added,
-                    dry_run=dry_run
                 )
             
         time.sleep(outer_sleep)
