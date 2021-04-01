@@ -43,9 +43,6 @@ def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> 
         return False
 
     old_news = existing_player_news['news']
-
-    print(f"Old news: {old_news}")
-    print(f"New news: {new_news}")
     
     if old_news == new_news:
         return False
@@ -109,8 +106,6 @@ def is_subscribed(handle: str):
 async def validate_mention(mention_text: str) -> Dict: 
     split_mention = mention_text.split()
 
-    print(split_mention)
-    
     if split_mention[1] is None or not split_mention[1].isnumeric():
         return None
 
@@ -127,7 +122,6 @@ async def validate_mention(mention_text: str) -> Dict:
 
 def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_run):
     handle = mention.user.screen_name
-    print(handle)
     mention_id = mention.id
 
     if is_subscribed(handle) == None:
@@ -149,9 +143,7 @@ def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_
 
 def remove_subscription(api, mention, dry_run: Optional[bool] = False):
     handle = mention.user.screen_name
-    print(handle)
     mention_id = mention.id
-    print("stop tweet mention_id: " + str(mention_id))
     subscription_id = is_subscribed(handle)
 
     # If the subscription exists and subscribed is set to 'true', 
@@ -186,23 +178,19 @@ async def check_subscriptions(api, dry_run: Optional[bool] = False):
     else:
         latest_mention_id = latest_mention["mention_id"] + 1
 
-    print("latest mention_id: " + str(latest_mention_id))
     mentions = api.mentions_timeline(latest_mention_id)
 
     for mention in mentions:
         mention_text = (mention.text.strip()).lower()
-        print(mention_text)
         if "stop" in mention_text:
-            print("removing subscription")
             remove_subscription(api, mention, dry_run)
         
         team_data = await validate_mention(mention.text)
-        print(team_data)
         if not team_data == None:
             add_subscription(api, mention, team_data['team_id'], team_data['team_name'], dry_run)
 
 async def fplmd(api, dry_run: bool):
-    outer_sleep = 10
+    sleep = 300
 
     # All player notifications
     players = await load_players()
@@ -258,9 +246,8 @@ async def fplmd(api, dry_run: bool):
                     team_handle=handle,
                 )
             
-        print("sleeping for: " + str(outer_sleep))
-    
-    time.sleep(outer_sleep)
+    print("sleeping for: " + str(sleep))
+    time.sleep(sleep)
 
 async def main():
     api = create_api()
