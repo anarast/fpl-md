@@ -1,14 +1,15 @@
-import os
 import sqlite3
 import logging
+import os
 
 from sqlite3.dbapi2 import Error
 
 logger = logging.getLogger()
 
-DEFAULT_PATH = os.path.join(os.path.dirname(__file__), 'fplmd.db')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+db_path = os.path.join(BASE_DIR, "fplmd.db")
 
-def db_connect(db_path=DEFAULT_PATH):
+def db_connect():
     conn = None
     try:
         conn = sqlite3.connect(db_path)

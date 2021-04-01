@@ -131,9 +131,8 @@ def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_
     handle = mention.user.screen_name
     mention_id = mention.id
 
-    logger.info(f"Adding subscription for {handle}")
-
     if is_subscribed(handle) == None:
+        logger.info(f"Adding subscription for {handle}")
         insert_cur = db_conn.cursor()
         insert_query = "insert into subscriptions (subscribed, handle, team_id, mention_id) values(:subscribed, :handle, :team_id, :mention_id)"
         insert_cur.execute(insert_query, {"subscribed": 1, "handle": handle, "team_id": subscribed_team_id, "mention_id": mention_id})
