@@ -1,6 +1,8 @@
 .vscode/
 dump.rdb
 
+src/fpl_md/fplmd.db
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

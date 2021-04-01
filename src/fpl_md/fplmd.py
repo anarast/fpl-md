@@ -1,157 +1,84 @@
 import asyncio
-import json
 import time
 import logging
 import os
 
+import redis
+
 from distutils.util import strtobool
 from typing import Optional, Dict
-from .api import create_api
-
-import aiohttp
-import redis
-from fpl import FPL
-from fpl.models import User
 from dotenv import load_dotenv
+
+from .api import create_api
+from .db import db_connect
+from .utils import get_http_sess, get_picks, load_team, load_players
 
 load_dotenv()
 redis_conn = redis.Redis(host=os.getenv("REDIS_HOST"), port=6379)
-http_sess: Optional[aiohttp.ClientSession] = None
-fpl_client: Optional[FPL] = None
+db_conn = db_connect()
+
 logger = logging.getLogger()
-cli_args: Optional[Dict] = None
 
-team_handle_map = [
-    {
-        'id': 1415006,
-        'handle': 'tarnasa',
-    },
-    {
-        'id': 23366,
-        'handle': 'torpy',
-    },
-    {
-        'id': 7410,
-        'handle': 'andante_nz',
-    }
-] 
+def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> bool:
+    ''' Updates the news and returns true if the news is new, returns false if the news is not new'''
+    select_cur = db_conn.cursor()
 
-def get_http_sess() -> aiohttp.ClientSession:
-    global http_sess
-    if http_sess is None:
-        http_sess = aiohttp.ClientSession()
-    return http_sess
-
-
-async def get_fpl_client() -> FPL:
-    global fpl_client
-    if fpl_client is not None:
-        return fpl_client
-
-    return FPL(get_http_sess())
-
-
-async def get_picks(user: User, gw: Optional[int] = None):
-    if gw is None:
-        gw = user.current_event
-
-    cid = f"picks:{user.id}:{gw}"
-    raw_picks = redis_conn.get(cid)
-    if raw_picks is None:
-        picks = await user.get_picks(gw)
-        raw_picks = json.dumps(picks)
-        redis_conn.set(name=cid, value=raw_picks, ex=300)
-
-    picks = json.loads(raw_picks)
-
-    return picks[str(gw)]
-
-
-async def load_team(team_id: int):
-    cid = f"team:{team_id}"
-    raw_user = redis_conn.get(cid)
-    if raw_user is None:
-        client = await get_fpl_client()
-        raw_user = await client.get_user(team_id, return_json=True)
-        redis_conn.set(name=cid, value=json.dumps(raw_user), ex=300)
+    if team_id == None:
+        select_query = f"SELECT id, news FROM player_news where player_id=:player_id and team_id is null"
+        select_cur.execute(select_query, { "player_id": player_id })
     else:
-        raw_user = json.loads(raw_user)
-
-    return User(raw_user, session=get_http_sess())
-
-
-async def load_gw(gw_id, with_live: bool = True):
-    client = await get_fpl_client()
-    gw = await client.get_gameweek(gameweek_id=gw_id, include_live=with_live)
-    return gw
-
-def get_news(player_id: int, player, team_id: Optional[int] = None):
-    if not team_id == None:
-        # If team_id is passed in, cache the news against the player ID 
-        # and the team ID so that we create a reply tweet for each FPL team
-        cid = f"player_news:{player_id}:{team_id}"
-    else:
-        cid = f"player_news:{player_id}"
-
-    old_news = redis_conn.get(cid)
+        select_query = f"SELECT id, news FROM player_news where player_id=:player_id and team_id=:team_id"
+        select_cur.execute(select_query, { "player_id": player_id, "team_id": team_id })
+    
+    existing_player_news = select_cur.fetchone();
     new_news = player['news']
+    news_added = player['news_added']
 
-    if (old_news != None):
-        old_news = json.loads(old_news)
+    if existing_player_news is None:
+        insert_cur = db_conn.cursor()
+        insert_query = "insert into player_news (player_id, news, team_id) values(:player_id, :news, :team_id)"
+        insert_cur.execute(insert_query, {"player_id": player_id, "news": new_news, "team_id": team_id })
+        db_conn.commit()
+
+        return False
+
+    old_news = existing_player_news['news']
+
+    print(f"Old news: {old_news}")
+    print(f"New news: {new_news}")
     
     if old_news == new_news:
-        return {"text": old_news, "new": False}
+        return False
     
-    redis_conn.set(cid, json.dumps(new_news))
+    update_query = f"update player_news set news=:news where id=:id"
+    update_cur = db_conn.cursor()
+    update_cur.execute(update_query, {"id": existing_player_news['id'], "news": new_news})
+    db_conn.commit()
 
     logger.warning(f"Old news: {old_news} is obsolete")
 
-    news_added = player['news_added']
-
-    if (news_added is None):
+    if news_added is None:
         logger.warning("news_added is null")
-        return {"text": new_news, "new": False}
+        return False
 
-    return {"text": new_news, "new": True}
+    return True
 
-async def load_players():
-    client = await get_fpl_client()
-    players = await client.get_players(
-        return_json=True
-    )
-
-    return players
-
-async def load_player(player_id: int, team_id: int):
-    client = await get_fpl_client()
-    player = await client.get_player(
-        player_id=player_id,
-        include_summary=True,
-        return_json=True
-    )
-
-    news = get_news(player_id, player, team_id)
-
-    return {"player": player, "news_text": news['text'], "new": news['new'] }
 
 def tweet(
     api, 
-    player,
+    player_name: str,
+    news: str,
+    news_added: str,
     dry_run: Optional[bool] = False,
     team_handle: Optional[str] = None,
-    team_name: Optional[str] = None
     ):
-    player_name = player['web_name']
-    news_added = player["news_added"]
-    news = player['news']
-
     if len(news) == 0:
         news = "No news, player is now available"
     
     if team_handle == None:
         text = ""
     else:
-        text = f"@{team_handle} Hi {team_name}, "
+        text = f"@{team_handle} "
     
     text = text + f"{player_name}'s status has been updated: {news}. First updated at: {news_added}"
     
@@ -166,48 +93,174 @@ def tweet(
         logger.warning("Dry run is set to true, not sending tweet.")
     
 
+def is_subscribed(handle: str):
+    exists_cur = db_conn.cursor()
+    exists_query = "select id from subscriptions where handle=:handle and subscribed=:subscribed"
+
+    subscription_exists = exists_cur.execute(exists_query, {"handle": handle, "subscribed": 1})
+    subscription = subscription_exists.fetchone()
+
+    if subscription is None:
+        return None
+
+    return subscription['id']
+    
+
+async def validate_mention(mention_text: str) -> Dict: 
+    split_mention = mention_text.split()
+
+    print(split_mention)
+    
+    if split_mention[1] is None or not split_mention[1].isnumeric():
+        return None
+
+    team_id = split_mention[1]
+    team = await load_team(int(team_id))
+
+    if team is None:
+        return None
+
+    return { 
+        'team_name': team.name, 
+        'team_id': team_id
+        }
+
+def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_run):
+    handle = mention.user.screen_name
+    print(handle)
+    mention_id = mention.id
+
+    if is_subscribed(handle) == None:
+        insert_cur = db_conn.cursor()
+        insert_query = "insert into subscriptions (subscribed, handle, team_id, mention_id) values(:subscribed, :handle, :team_id, :mention_id)"
+        insert_cur.execute(insert_query, {"subscribed": 1, "handle": handle, "team_id": subscribed_team_id, "mention_id": mention_id})
+        db_conn.commit()
+        text = f"@{handle} You've been subscribed to updates for the FPL team '{team_name}'. If you would like to unsubscribe, reply with the text 'Stop'."
+
+        logger.warning(text)    
+
+        if not dry_run:
+            try:
+                api.update_status(text, mention_id)
+            except Exception as e:
+                logger.error("An exception occurred: " + str(e))
+        else:
+            logger.warning("Dry run is set to true, not sending tweet.")
+
+def remove_subscription(api, mention, dry_run: Optional[bool] = False):
+    handle = mention.user.screen_name
+    print(handle)
+    mention_id = mention.id
+    print("stop tweet mention_id: " + str(mention_id))
+    subscription_id = is_subscribed(handle)
+
+    # If the subscription exists and subscribed is set to 'true', 
+    # update the subscribed column to 'false'
+    if subscription_id != None:
+        update_cur = db_conn.cursor()
+        update_query = "update subscriptions set subscribed=:subscribed, mention_id=:mention_id where id=:id"
+        update_cur.execute(update_query, { "id": subscription_id, "subscribed": 0, "mention_id": mention_id })
+        db_conn.commit()
+
+        text = f"@{handle} You've been unsubscribed from player updates."
+
+        if not dry_run:
+            try:
+                api.update_status(text, mention_id)
+            except Exception as e:
+                logger.error("An exception occurred: " + str(e))
+        else:
+            logger.warning("Dry run is set to true, not sending tweet.")
+    
+
+async def check_subscriptions(api, dry_run: Optional[bool] = False):
+    # Only get mentions that are more recent than the most recent mention_id
+    # in the subscriptions table, so that we don't handle the same mentions
+    # multiple times.
+    select_cur = db_conn.cursor()
+    query = "select mention_id from subscriptions order by mention_id desc"
+    latest_mention = select_cur.execute(query).fetchone()
+
+    if latest_mention is None:
+        latest_mention_id = None
+    else:
+        latest_mention_id = latest_mention["mention_id"] + 1
+
+    print("latest mention_id: " + str(latest_mention_id))
+    mentions = api.mentions_timeline(latest_mention_id)
+
+    for mention in mentions:
+        mention_text = (mention.text.strip()).lower()
+        print(mention_text)
+        if "stop" in mention_text:
+            print("removing subscription")
+            remove_subscription(api, mention, dry_run)
+        
+        team_data = await validate_mention(mention.text)
+        print(team_data)
+        if not team_data == None:
+            add_subscription(api, mention, team_data['team_id'], team_data['team_name'], dry_run)
+
 async def fplmd(api, dry_run: bool):
-    outer_sleep = 300
-    inner_sleep = 60
+    outer_sleep = 10
 
     # All player notifications
     players = await load_players()
+    player_news_map = {}
     for player in players:
+        # Build up a map of player IDs and news so that we
+        # don't have to call the API again for the picks below
         player_id = player['id']
-        news = get_news(player_id, player)
-        if news['new']:
+        player_data = {
+            'news': player['news'],
+            'news_added': player['news_added'],
+            'web_name': player['web_name'],
+        }
+        player_news_map[player_id] = player_data
+        news_is_new = update_news(player_id, player_data)
+        if news_is_new:
             # Tweet the tweet
             tweet(
                 api, 
-                player,
+                player['web_name'],
+                player['news'],
+                player['news_added'],
                 dry_run=dry_run
             )
 
     # Custom player notifications (replies)
-    for team_handle in team_handle_map:
-        team_id = team_handle['id']
+    # Get all subscriptions where subscribed = 1
+    select_cur = db_conn.cursor()
+    query = f"SELECT handle, team_id FROM subscriptions where subscribed=:subscribed"
+    select_cur.execute(query, {"subscribed": 1})
+    subscriptions = select_cur.fetchall()
+
+    for subscription in subscriptions:
+        team_id = subscription['team_id']
+        handle = subscription['handle']
         team = await load_team(team_id)
         gw = team.current_event
         picks = await get_picks(team, gw)
 
-        for player in picks:
-            player_id = player['element']
-            player_details = await load_player(player_id, team_id)
-            player = player_details["player"]
-            news_is_new = player_details['new']
-            time.sleep(inner_sleep)
+        for pick in picks:
+            player_id = pick['element']
+            player_data = player_news_map[player_id]
+            news_is_new = update_news(player_id, player_data, team_id)
 
             if news_is_new:
                 # Tweet the tweet
                 tweet(
                     api, 
-                    player,
+                    player_data['web_name'],
+                    player_data['news'],
+                    player_data['news_added'],
                     dry_run=dry_run,
-                    team_name=team.player_first_name, 
-                    team_handle=team_handle['handle'],
+                    team_handle=handle,
                 )
             
-        time.sleep(outer_sleep)
+        print("sleeping for: " + str(outer_sleep))
+    
+    time.sleep(outer_sleep)
 
 async def main():
     api = create_api()
@@ -215,6 +268,7 @@ async def main():
     logger.warning("Dry run: " + str(dry_run))
     while(True):
         try:
+            await check_subscriptions(api, dry_run)
             await fplmd(api, dry_run)
         except Exception as e:
             logger.error("An exception occurred: " + str(e))
