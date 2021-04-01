@@ -18,6 +18,7 @@ redis_conn = redis.Redis(host=os.getenv("REDIS_HOST"), port=6379)
 db_conn = db_connect()
 
 logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> bool:
     ''' Updates the news and returns true if the news is new, returns false if the news is not new'''
@@ -52,10 +53,9 @@ def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> 
     update_cur.execute(update_query, {"id": existing_player_news['id'], "news": new_news})
     db_conn.commit()
 
-    logger.warning(f"Old news: {old_news} is obsolete")
+    logger.info(f"Old news: {old_news} is obsolete")
 
     if news_added is None:
-        logger.warning("news_added is null")
         return False
 
     return True
@@ -79,7 +79,7 @@ def tweet(
     
     text = text + f"{player_name}'s status has been updated: {news}. First updated at: {news_added}"
     
-    logger.warning(text)
+    logger.warning("Tweeting: " + text)
 
     if not dry_run:
         try:
@@ -124,6 +124,8 @@ def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_
     handle = mention.user.screen_name
     mention_id = mention.id
 
+    logger.info(f"Adding subscription for {handle}")
+
     if is_subscribed(handle) == None:
         insert_cur = db_conn.cursor()
         insert_query = "insert into subscriptions (subscribed, handle, team_id, mention_id) values(:subscribed, :handle, :team_id, :mention_id)"
@@ -131,7 +133,7 @@ def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_
         db_conn.commit()
         text = f"@{handle} You've been subscribed to updates for the FPL team '{team_name}'. If you would like to unsubscribe, reply with the text 'Stop'."
 
-        logger.warning(text)    
+        logger.info(text)    
 
         if not dry_run:
             try:
@@ -146,6 +148,8 @@ def remove_subscription(api, mention, dry_run: Optional[bool] = False):
     mention_id = mention.id
     subscription_id = is_subscribed(handle)
 
+    logger.info(f"Removing subscription for {handle}")
+
     # If the subscription exists and subscribed is set to 'true', 
     # update the subscribed column to 'false'
     if subscription_id != None:
@@ -155,6 +159,8 @@ def remove_subscription(api, mention, dry_run: Optional[bool] = False):
         db_conn.commit()
 
         text = f"@{handle} You've been unsubscribed from player updates."
+
+        logger.info(text)
 
         if not dry_run:
             try:
@@ -166,6 +172,7 @@ def remove_subscription(api, mention, dry_run: Optional[bool] = False):
     
 
 async def check_subscriptions(api, dry_run: Optional[bool] = False):
+    logger.info(f"Checking subscriptions")
     # Only get mentions that are more recent than the most recent mention_id
     # in the subscriptions table, so that we don't handle the same mentions
     # multiple times.
@@ -190,9 +197,8 @@ async def check_subscriptions(api, dry_run: Optional[bool] = False):
             add_subscription(api, mention, team_data['team_id'], team_data['team_name'], dry_run)
 
 async def fplmd(api, dry_run: bool):
-    sleep = 300
-
     # All player notifications
+    logger.info("Handling all player notifications")
     players = await load_players()
     player_news_map = {}
     for player in players:
@@ -223,6 +229,8 @@ async def fplmd(api, dry_run: bool):
     select_cur.execute(query, {"subscribed": 1})
     subscriptions = select_cur.fetchall()
 
+    logger.info("Handling subscription notifications")
+
     for subscription in subscriptions:
         team_id = subscription['team_id']
         handle = subscription['handle']
@@ -245,18 +253,19 @@ async def fplmd(api, dry_run: bool):
                     dry_run=dry_run,
                     team_handle=handle,
                 )
-            
-    print("sleeping for: " + str(sleep))
-    time.sleep(sleep)
+
 
 async def main():
     api = create_api()
     dry_run = strtobool(os.getenv("DRY_RUN"))
     logger.warning("Dry run: " + str(dry_run))
+    sleep = 240
     while(True):
         try:
             await check_subscriptions(api, dry_run)
             await fplmd(api, dry_run)
+            logger.warning(f"Sleeping for: {str(sleep)} seconds...")
+            time.sleep(sleep)
         except Exception as e:
             logger.error("An exception occurred: " + str(e))
             session = get_http_sess()
