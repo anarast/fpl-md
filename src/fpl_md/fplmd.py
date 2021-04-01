@@ -45,7 +45,7 @@ def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> 
         return False
 
     old_news = existing_player_news['news']
-    
+
     if old_news == new_news:
         return False
     
@@ -80,12 +80,11 @@ def tweet_player_status(
     
     text = text + f"{player_name}'s status has been updated: {news}. First updated at: {news_added}"
     
-    logger.warning("Tweeting: " + text)
-
     tweet(api, text, dry_run)
 
 def tweet(api, text: str, dry_run: bool, mention_id: Optional[int] = None):
     logger.info(text)
+
     if not dry_run:
         try:
             # The tweets have to be unique or Twitter throws an error.
@@ -106,6 +105,9 @@ def is_subscribed(handle: str):
 
     if subscription is None:
         return None
+    
+    logger.info("Is subscribed:")
+    logger.info(subscription)
 
     return subscription['id']
     
@@ -250,12 +252,12 @@ async def main():
     api = create_api()
     dry_run = strtobool(os.getenv("DRY_RUN"))
     logger.warning("Dry run: " + str(dry_run))
-    sleep = 240
+    sleep = 60
     while(True):
         try:
             await check_subscriptions(api, dry_run)
             await fplmd(api, dry_run)
-            logger.warning(f"Sleeping for: {str(sleep)} seconds...")
+            logger.info(f"Sleeping for: {str(sleep)} seconds...")
             time.sleep(sleep)
         except Exception as e:
             logger.error("An exception occurred: " + str(e))

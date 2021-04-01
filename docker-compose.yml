@@ -10,6 +10,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    volumes:
+      - ./src/fpl_md/db:/app/src/fpl_md/db
     restart: always
     links:
       - redis

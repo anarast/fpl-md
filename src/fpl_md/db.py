@@ -5,9 +5,10 @@ import os
 from sqlite3.dbapi2 import Error
 
 logger = logging.getLogger()
+logging.basicConfig(level=logging.INFO)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-db_path = os.path.join(BASE_DIR, "fplmd.db")
+db_path = os.path.join(BASE_DIR, "db/fplmd.db")
 
 def db_connect():
     conn = None

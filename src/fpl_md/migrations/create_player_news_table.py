@@ -1,6 +1,6 @@
 import sqlite3
 
-con = sqlite3.connect('fplmd.db')
+con = sqlite3.connect('db/fplmd.db')
 
 with con:
 
