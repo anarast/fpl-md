@@ -7,7 +7,9 @@ import redis
 from fpl import FPL
 from fpl.models import User
 from typing import Optional
+from dotenv import load_dotenv
 
+load_dotenv()
 http_sess: Optional[aiohttp.ClientSession] = None
 fpl_client: Optional[FPL] = None
 redis_conn = redis.Redis(host=os.getenv("REDIS_HOST"), port=6379)
