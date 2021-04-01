@@ -38,8 +38,16 @@ def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> 
 
     if existing_player_news is None:
         insert_cur = db_conn.cursor()
-        insert_query = "insert into player_news (player_id, news, team_id) values(:player_id, :news, :team_id)"
-        insert_cur.execute(insert_query, {"player_id": player_id, "news": new_news, "team_id": team_id })
+        insert_query = "insert into player_news (player_id, news, team_id) \
+            values(:player_id, :news, :team_id)"
+        insert_cur.execute(
+            insert_query, {
+                "player_id": player_id, 
+                "news": new_news, 
+                "team_id": team_id 
+                }
+                )
+
         db_conn.commit()
 
         return False
@@ -125,9 +133,9 @@ async def validate_mention(mention_text: str) -> Dict:
         return None
 
     return { 
-        'team_name': team.name, 
-        'team_id': team_id
-        }
+            'team_name': team.name, 
+            'team_id': team_id
+            }
 
 def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_run):
     handle = mention.user.screen_name
@@ -136,11 +144,20 @@ def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_
     if is_subscribed(handle) == None:
         logger.info(f"Adding subscription for {handle}")
         insert_cur = db_conn.cursor()
-        insert_query = "insert into subscriptions (subscribed, handle, team_id, mention_id) values(:subscribed, :handle, :team_id, :mention_id)"
-        insert_cur.execute(insert_query, {"subscribed": 1, "handle": handle, "team_id": subscribed_team_id, "mention_id": mention_id})
+        insert_query = "insert into subscriptions (subscribed, handle, team_id, mention_id) \
+            values(:subscribed, :handle, :team_id, :mention_id)"
+        insert_cur.execute(
+            insert_query, {
+                "subscribed": 1, 
+                "handle": handle, 
+                "team_id": subscribed_team_id, 
+                "mention_id": mention_id
+                }
+            )
         db_conn.commit()
         
-        text = f"@{handle} You've been subscribed to updates for the FPL team '{team_name}'. If you would like to unsubscribe, reply with the text 'Stop'."
+        text = f"@{handle} You've been subscribed to player updates for the FPL team '{team_name}'. \
+            If you would like to unsubscribe, reply to this tweet with the text 'Stop'."
 
         tweet(api, text, dry_run, mention_id)
 
@@ -156,7 +173,14 @@ def remove_subscription(api, mention, dry_run: Optional[bool] = False):
     if subscription_id != None:
         update_cur = db_conn.cursor()
         update_query = "update subscriptions set subscribed=:subscribed, mention_id=:mention_id where id=:id"
-        update_cur.execute(update_query, { "id": subscription_id, "subscribed": 0, "mention_id": mention_id })
+        update_cur.execute(
+            update_query, { 
+                "id": subscription_id, 
+                "subscribed": 0, 
+                "mention_id": mention_id 
+                }
+            )
+
         db_conn.commit()
 
         text = f"@{handle} You've been unsubscribed from player updates."
