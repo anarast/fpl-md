@@ -85,9 +85,9 @@ def tweet_player_status(
     tweet(api, text, dry_run)
 
 def tweet(api, text: str, dry_run: bool, mention_id: Optional[int] = None):
+    logger.info(text)
     if not dry_run:
         try:
-            logger.info(text)
             # The tweets have to be unique or Twitter throws an error.
             current_time = datetime.now()
             api.update_status(text + f" Timestamp: {current_time}", mention_id)
