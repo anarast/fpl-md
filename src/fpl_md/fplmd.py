@@ -5,6 +5,7 @@ import os
 
 import redis
 
+from datetime import datetime
 from distutils.util import strtobool
 from typing import Optional, Dict
 from dotenv import load_dotenv
@@ -18,7 +19,7 @@ redis_conn = redis.Redis(host=os.getenv("REDIS_HOST"), port=6379)
 db_conn = db_connect()
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
 def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> bool:
     ''' Updates the news and returns true if the news is new, returns false if the news is not new'''
@@ -61,7 +62,7 @@ def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> 
     return True
 
 
-def tweet(
+def tweet_player_status(
     api, 
     player_name: str,
     news: str,
@@ -81,14 +82,20 @@ def tweet(
     
     logger.warning("Tweeting: " + text)
 
+    tweet(api, text, dry_run)
+
+def tweet(api, text: str, dry_run: bool, mention_id: Optional[int] = None):
     if not dry_run:
         try:
-            api.update_status(text)
+            logger.info(text)
+            # The tweets have to be unique or Twitter throws an error.
+            current_time = datetime.now()
+            api.update_status(text + f" Timestamp: {current_time}", mention_id)
         except Exception as e:
             logger.error("An exception occurred: " + str(e))
     else:
         logger.warning("Dry run is set to true, not sending tweet.")
-    
+
 
 def is_subscribed(handle: str):
     exists_cur = db_conn.cursor()
@@ -131,17 +138,10 @@ def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_
         insert_query = "insert into subscriptions (subscribed, handle, team_id, mention_id) values(:subscribed, :handle, :team_id, :mention_id)"
         insert_cur.execute(insert_query, {"subscribed": 1, "handle": handle, "team_id": subscribed_team_id, "mention_id": mention_id})
         db_conn.commit()
+        
         text = f"@{handle} You've been subscribed to updates for the FPL team '{team_name}'. If you would like to unsubscribe, reply with the text 'Stop'."
 
-        logger.info(text)    
-
-        if not dry_run:
-            try:
-                api.update_status(text, mention_id)
-            except Exception as e:
-                logger.error("An exception occurred: " + str(e))
-        else:
-            logger.warning("Dry run is set to true, not sending tweet.")
+        tweet(api, text, dry_run, mention_id)
 
 def remove_subscription(api, mention, dry_run: Optional[bool] = False):
     handle = mention.user.screen_name
@@ -160,15 +160,7 @@ def remove_subscription(api, mention, dry_run: Optional[bool] = False):
 
         text = f"@{handle} You've been unsubscribed from player updates."
 
-        logger.info(text)
-
-        if not dry_run:
-            try:
-                api.update_status(text, mention_id)
-            except Exception as e:
-                logger.error("An exception occurred: " + str(e))
-        else:
-            logger.warning("Dry run is set to true, not sending tweet.")
+        tweet(api, text, dry_run, mention_id)
     
 
 async def check_subscriptions(api, dry_run: Optional[bool] = False):
@@ -214,7 +206,7 @@ async def fplmd(api, dry_run: bool):
         news_is_new = update_news(player_id, player_data)
         if news_is_new:
             # Tweet the tweet
-            tweet(
+            tweet_player_status(
                 api, 
                 player['web_name'],
                 player['news'],
@@ -245,7 +237,7 @@ async def fplmd(api, dry_run: bool):
 
             if news_is_new:
                 # Tweet the tweet
-                tweet(
+                tweet_player_status(
                     api, 
                     player_data['web_name'],
                     player_data['news'],
