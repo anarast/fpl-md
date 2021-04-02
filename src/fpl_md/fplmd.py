@@ -42,8 +42,6 @@ def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> 
         return False
 
     old_news = existing_player_news['news']
-    logger.info(f"Old news: {old_news}")
-    logger.info(f"New news: {new_news}")
 
     if old_news == new_news:
         return False
