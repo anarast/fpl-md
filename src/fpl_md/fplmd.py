@@ -18,7 +18,7 @@ load_dotenv()
 redis_conn = redis.Redis(host=os.getenv("REDIS_HOST"), port=6379)
 
 logger = logging.getLogger()
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 
 def update_news(player_id: int, player: Dict, team_id: Optional[int] = None) -> bool:
     ''' Updates the news and returns true if the news is new, returns false if the news is not new'''
