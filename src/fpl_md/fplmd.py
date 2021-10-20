@@ -74,8 +74,13 @@ def tweet_player_status(
     else:
         text = f"@{team_handle} "
     
-    text = text + f"{player_name}'s status has been updated: {news}. First updated at: {news_added}"
-    
+    if player_name.endswith('s'):
+      possessive_name = f"{player_name}'"
+    else:
+      possessive_name = f"{player_name}'s"
+
+    text = text + f"{possessive_name} status has been updated: {news}. First updated at: {news_added}"
+
     # We don't need to add the timestamp because we've already added one above which should make
     # the tweet unique.
     tweet(api=api, text=text, dry_run=dry_run, add_timestamp=False)
