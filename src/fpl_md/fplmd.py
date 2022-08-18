@@ -153,8 +153,7 @@ def add_subscription(api, mention, subscribed_team_id: str, team_name: str, dry_
                 }
         db_write(query=insert_query, params=insert_params)
         
-        text = f"@{handle} You've been subscribed to player updates for the FPL team '{team_name}'. \
-            If you would like to unsubscribe, reply to this tweet with the text 'Stop'."
+        text = f"@{handle} You've been subscribed to player updates for the FPL team '{team_name}'. If you would like to unsubscribe, reply to this tweet with the text 'Stop'."
 
         tweet(api=api, text=text, dry_run=dry_run, add_timestamp=True, mention_id=mention_id)
 
